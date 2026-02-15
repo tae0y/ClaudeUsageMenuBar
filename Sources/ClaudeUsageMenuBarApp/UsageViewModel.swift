@@ -45,10 +45,25 @@ final class UsageViewModel: ObservableObject {
     }
 
     var menuTitle: String {
-        guard let snapshot else { return "Claude Usage" }
-        let d = compactToken(snapshot.daily?.usedTokens)
-        let w = compactToken(snapshot.weekly?.usedTokens)
-        return "D \(d) | W \(w)"
+        // Keep title short; show daily budget utilization as a percentage.
+        guard snapshot != nil else { return "Claude" }
+        return "( ᐛ )σ \(dailyPercentUsedText)"
+    }
+
+    var dailyProgress: Double? {
+        snapshot?.daily?.progress
+    }
+
+    var dailyPercentUsedText: String {
+        guard let p = dailyProgress else { return "-%" }
+        let used = max(0, min(p, 1)) * 100
+        return "\(Int(used.rounded()))%"
+    }
+
+    var dailyPercentLeftText: String {
+        guard let p = dailyProgress else { return "-" }
+        let remaining = max(0, min(1 - p, 1)) * 100
+        return "\(Int(remaining.rounded()))% left"
     }
 
     func onAppear() {
