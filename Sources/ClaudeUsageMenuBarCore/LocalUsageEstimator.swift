@@ -57,24 +57,22 @@ public struct LocalUsageEstimator: Sendable {
             throw LocalUsageEstimatorError.invalidStatsCache
         }
 
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: now)
+        // Primary source: per-message usage from Claude Code local logs.
+        // This captures rolling windows and includes cache read/creation tokens that are often
+        // material for "you've hit your limit" situations.
+        let scanned = scanProjectsJSONL(now: now)
+        var daily = scanned.daily
+        var weekly = scanned.weekly
+        var sourceDetails = scanned.sourceDetails
 
-        var daily = 0
-        var weekly = 0
-
-        let fromStats = computeFromStatsCache(cache: cache, calendar: calendar, today: today)
-        daily = fromStats.daily
-        weekly = fromStats.weekly
-
-        // stats-cache.json sometimes lags behind actual usage. If today's data is missing,
-        // fall back to scanning ~/.claude/projects/**/*.jsonl which includes per-message usage.
-        var sourceDetails = "~/.claude/stats-cache.json"
-        if daily == 0 && !fromStats.hasTodayEntry {
-            let scanned = scanProjectsJSONL(now: now, calendar: calendar)
-            daily = scanned.daily
-            weekly = scanned.weekly
-            sourceDetails = scanned.sourceDetails
+        // Fallback: stats-cache rollups (calendar-day based; may lag and isn't rolling-5h).
+        if daily == 0 && weekly == 0 {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: now)
+            let fromStats = computeFromStatsCache(cache: cache, calendar: calendar, today: today)
+            daily = fromStats.daily
+            weekly = fromStats.weekly
+            sourceDetails = "~/.claude/stats-cache.json (fallback)"
         }
 
         var lifetimeIn = 0
@@ -137,13 +135,16 @@ private struct ProjectScanRollup {
     let sourceDetails: String
 }
 
-private func scanProjectsJSONL(now: Date, calendar: Calendar) -> ProjectScanRollup {
+private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let projectsRoot = URL(fileURLWithPath: NSHomeDirectory() + "/.claude/projects", isDirectory: true)
     let fm = FileManager.default
 
-    let todayStart = calendar.startOfDay(for: now)
-    let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart) ?? now
-    let weekStart = calendar.date(byAdding: .day, value: -6, to: todayStart) ?? todayStart
+    // Rolling windows:
+    // - "daily": last 5 hours
+    // - "weekly": last 7 days
+    let windowEnd = now
+    let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
+    let sevenDayStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
 
     var dailyMaxByMessageID: [String: Int] = [:]
     var weeklyMaxByMessageID: [String: Int] = [:]
@@ -186,7 +187,12 @@ private func scanProjectsJSONL(now: Date, calendar: Calendar) -> ProjectScanRoll
     let maxFilesToScan = 200
     for entry in candidates.prefix(maxFilesToScan) {
         scannedFiles += 1
-        let (d, w, lineCount, didUse) = scanOneJSONL(url: entry.url, calendar: calendar, dayStart: todayStart, dayEnd: tomorrowStart, weekStart: weekStart)
+        let (d, w, lineCount, didUse) = scanOneJSONL(
+            url: entry.url,
+            window5hStart: fiveHourStart,
+            window7dStart: sevenDayStart,
+            windowEnd: windowEnd
+        )
         scannedLines += lineCount
         usedFallback = usedFallback || didUse
 
@@ -208,10 +214,9 @@ private func scanProjectsJSONL(now: Date, calendar: Calendar) -> ProjectScanRoll
 
 private func scanOneJSONL(
     url: URL,
-    calendar: Calendar,
-    dayStart: Date,
-    dayEnd: Date,
-    weekStart: Date
+    window5hStart: Date,
+    window7dStart: Date,
+    windowEnd: Date
 ) -> (daily: [String: Int], weekly: [String: Int], lineCount: Int, didUse: Bool) {
     guard let data = try? Data(contentsOf: url),
           let text = String(data: data, encoding: .utf8) else {
@@ -232,16 +237,16 @@ private func scanOneJSONL(
         let ts = extractISODate(from: any, key: "timestamp") ?? extractISODateDeep(from: any) // fallback
         guard let ts else { continue }
 
-        if ts < weekStart || ts >= dayEnd { continue }
+        if ts < window7dStart || ts >= windowEnd { continue }
 
-        guard let record = extractMessageUsage(any: any, timestamp: ts) else { continue }
+        guard let record = extractMessageUsage(any: any) else { continue }
         didUse = true
 
-        let total = max(0, record.inputTokens + record.outputTokens)
-        if ts >= dayStart && ts < dayEnd {
+        let total = max(0, record.totalTokens)
+        if ts >= window5hStart && ts < windowEnd {
             if (daily[record.id] ?? 0) < total { daily[record.id] = total }
         }
-        if ts >= weekStart && ts < dayEnd {
+        if ts >= window7dStart && ts < windowEnd {
             if (weekly[record.id] ?? 0) < total { weekly[record.id] = total }
         }
     }
@@ -251,26 +256,40 @@ private func scanOneJSONL(
 
 private struct MessageUsageRecord {
     let id: String
-    let inputTokens: Int
-    let outputTokens: Int
+    let totalTokens: Int
 }
 
-private func extractMessageUsage(any: Any, timestamp: Date) -> MessageUsageRecord? {
-    // Walk dictionaries to find a nested object with keys: id + usage{input_tokens, output_tokens}
+private func extractMessageUsage(any: Any) -> MessageUsageRecord? {
+    // Common Claude Code schema:
+    // { ..., "message": { "id": "...", "usage": { ... token fields ... } }, ... }
+    if let dict = any as? [String: Any],
+       let msg = dict["message"] as? [String: Any],
+       let usage = msg["usage"] as? [String: Any] {
+        let id = (msg["id"] as? String)
+            ?? (dict["messageId"] as? String)
+            ?? (dict["message_id"] as? String)
+            ?? (dict["uuid"] as? String)
+        if let id, let total = totalTokens(from: usage), total > 0 {
+            return MessageUsageRecord(id: id, totalTokens: total)
+        }
+    }
+
+    // Fallback: walk dictionaries to find a nested object with keys: id-ish + usage{...}
     var stack: [Any] = [any]
     var seen = 0
 
     while let cur = stack.popLast() {
         seen += 1
-        if seen > 2000 { break } // safety guard
+        if seen > 4000 { break } // safety guard
 
         if let dict = cur as? [String: Any] {
-            if let id = dict["id"] as? String,
-               let usage = dict["usage"] as? [String: Any] {
-                let input = intFrom(usage, key: "input_tokens") ?? 0
-                let output = intFrom(usage, key: "output_tokens") ?? 0
-                if input > 0 || output > 0 {
-                    return MessageUsageRecord(id: id, inputTokens: input, outputTokens: output)
+            if let usage = dict["usage"] as? [String: Any] {
+                let id = (dict["id"] as? String)
+                    ?? (dict["messageId"] as? String)
+                    ?? (dict["message_id"] as? String)
+                    ?? (dict["uuid"] as? String)
+                if let id, let total = totalTokens(from: usage), total > 0 {
+                    return MessageUsageRecord(id: id, totalTokens: total)
                 }
             }
             for (_, v) in dict { stack.append(v) }
@@ -280,6 +299,25 @@ private func extractMessageUsage(any: Any, timestamp: Date) -> MessageUsageRecor
     }
 
     return nil
+}
+
+private func totalTokens(from usage: [String: Any]) -> Int? {
+    let input = intFrom(usage, key: "input_tokens") ?? 0
+    let output = intFrom(usage, key: "output_tokens") ?? 0
+
+    // Claude Code commonly emits these; they can dwarf input/output when caching is involved.
+    var cacheCreate = intFrom(usage, key: "cache_creation_input_tokens") ?? 0
+    let cacheRead = intFrom(usage, key: "cache_read_input_tokens") ?? 0
+
+    // Some logs omit cache_creation_input_tokens but include a breakdown under cache_creation.
+    if cacheCreate == 0, let cc = usage["cache_creation"] as? [String: Any] {
+        let eph5m = intFrom(cc, key: "ephemeral_5m_input_tokens") ?? 0
+        let eph1h = intFrom(cc, key: "ephemeral_1h_input_tokens") ?? 0
+        cacheCreate = eph5m + eph1h
+    }
+
+    let total = input + output + cacheCreate + cacheRead
+    return total > 0 ? total : nil
 }
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {

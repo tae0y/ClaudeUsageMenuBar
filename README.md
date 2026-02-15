@@ -11,6 +11,7 @@ This app is designed for personal accounts where org/admin usage APIs are not av
   - `~/.claude/projects/**/*.jsonl` (per-message usage)
   - `~/.claude/stats-cache.json` (optional; may lag)
 - Computes rolling windows by scanning recent JSONL files and deduplicating by message id.
+- Counts input/output tokens and Claude Code cache tokens (`cache_read_input_tokens`, `cache_creation_input_tokens`) when present.
 
 ### Token Budget
 Because official limits are not reliably exposed via a public API for personal accounts, the app uses a configurable **token budget**.
@@ -30,7 +31,13 @@ You can change these at any time in the app via the `Budget` button.
 ### Prerequisites
 - Xcode Command Line Tools
 
-### Build an app bundle
+### Build and Debug
+
+```bash
+swift run
+```
+
+### Build and Install into Applications
 From the repo root (It takes few minutes): 
 ```bash
 ./scripts/make_app_bundle.sh
@@ -39,7 +46,6 @@ From the repo root (It takes few minutes):
 This creates:
 - `./dist/ClaudeUsageMenuBar.app`
 
-### Install into Applications
 Install it system-wide:
 ```bash
 sudo cp -R "./dist/ClaudeUsageMenuBar.app" "/Applications/"
@@ -52,7 +58,7 @@ cp -R "./dist/ClaudeUsageMenuBar.app" "$HOME/Applications/"
 
 Then launch it once so macOS registers it.
 
-### Auto-Start on Login
+Auto-Start on Login
 
 1. Open **System Settings**
 2. Go to **General** -> **Login Items**
@@ -63,7 +69,4 @@ Then launch it once so macOS registers it.
 - All values are **estimates** derived from local logs.
 - Usage may differ from what you see in the web UI if you also use Claude outside Claude Code.
 - First load is optimized using a cached snapshot stored in Application Support.
-
-## Data Storage
-Settings are stored as JSON at:
-- `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
+- Settings are stored as JSON at: `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`

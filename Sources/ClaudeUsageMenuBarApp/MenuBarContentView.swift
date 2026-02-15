@@ -9,8 +9,8 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            usageSection(title: "Daily", window: viewModel.snapshot?.daily)
-            usageSection(title: "Weekly", window: viewModel.snapshot?.weekly)
+            usageSection(title: "5h (rolling)", window: viewModel.snapshot?.daily)
+            usageSection(title: "7d (rolling)", window: viewModel.snapshot?.weekly)
 
             Text(viewModel.burnRateStatus)
                 .font(.caption2.monospacedDigit())
@@ -115,12 +115,12 @@ private struct LimitsView: View {
             Text("Token Budget (Estimated Mode)")
                 .font(.title3.bold())
 
-            Text("Daily Budget (tokens)")
+            Text("5h Budget (tokens)")
                 .font(.caption)
             TextField("e.g. 500000", text: $viewModel.dailyLimitInput)
                 .textFieldStyle(.roundedBorder)
 
-            Text("Weekly Budget (tokens)")
+            Text("7d Budget (tokens)")
                 .font(.caption)
             TextField("e.g. 2000000", text: $viewModel.weeklyLimitInput)
                 .textFieldStyle(.roundedBorder)

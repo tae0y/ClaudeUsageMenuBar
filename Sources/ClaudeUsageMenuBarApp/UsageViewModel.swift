@@ -19,8 +19,9 @@ final class UsageViewModel: ObservableObject {
     private let budgetSuggester = BudgetSuggester()
 
     // For burn rate (tokens/min) estimation since app start.
-    private var lastDailyTokens: Int?
-    private var lastDailyAt: Date?
+    // Use lifetime tokens to avoid "rolling window drops" making this negative/noisy.
+    private var lastLifetimeTokens: Int?
+    private var lastLifetimeAt: Date?
 
     init() {
         self.settings = settingsStore.load()
@@ -45,7 +46,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     var menuTitle: String {
-        // Keep title short; show daily budget utilization as a percentage.
+        // Keep title short; show 5h budget utilization as a percentage.
         guard snapshot != nil else { return "Claude" }
         return "( ᐛ )σ \(dailyPercentUsedText)"
     }
@@ -79,11 +80,11 @@ final class UsageViewModel: ObservableObject {
 
         // If user typed something but it didn't parse, keep the sheet open and show an error.
         if daily == nil && !dailyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid daily budget. Use digits only (commas/underscores/spaces are allowed). Example: 500000 or 500,000."
+            errorMessage = "Invalid 5h budget. Use digits only (commas/underscores/spaces are allowed). Example: 500000 or 500,000."
             return
         }
         if weekly == nil && !weeklyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid weekly budget. Use digits only (commas/underscores/spaces are allowed). Example: 2000000 or 2,000,000."
+            errorMessage = "Invalid 7d budget. Use digits only (commas/underscores/spaces are allowed). Example: 2000000 or 2,000,000."
             return
         }
 
@@ -119,18 +120,18 @@ final class UsageViewModel: ObservableObject {
                 usedTokens: estimate.dailyTokens,
                 tokenLimit: dailyLimit,
                 utilization: nil,
-                resetAt: nextMidnight()
+                resetAt: nil
             )
             let weekly = UsageWindow(
                 usedTokens: estimate.weeklyTokens,
                 tokenLimit: weeklyLimit,
                 utilization: nil,
-                resetAt: nextMondayMidnight()
+                resetAt: nil
             )
 
             snapshot = UsageSnapshot(daily: daily, weekly: weekly)
             sourceStatus = "Estimated: \(estimate.sourceDescription)"
-            burnRateStatus = burnRateString(dailyTokens: estimate.dailyTokens)
+            burnRateStatus = burnRateString(lifetimeTokens: estimate.lifetimeTotalTokens)
 
             // Persist last snapshot for fast next startup.
             settings.lastSnapshot = PersistedSnapshot(
@@ -169,42 +170,26 @@ final class UsageViewModel: ObservableObject {
         return Int(normalized)
     }
 
-    private func burnRateString(dailyTokens: Int) -> String {
+    private func burnRateString(lifetimeTokens: Int) -> String {
         let now = Date()
         defer {
-            lastDailyTokens = dailyTokens
-            lastDailyAt = now
+            lastLifetimeTokens = lifetimeTokens
+            lastLifetimeAt = now
         }
 
-        guard let prev = lastDailyTokens, let prevAt = lastDailyAt else {
+        guard let prev = lastLifetimeTokens, let prevAt = lastLifetimeAt else {
             return "Burn: -"
         }
 
-        let delta = dailyTokens - prev
+        let delta = lifetimeTokens - prev
         let minutes = max(now.timeIntervalSince(prevAt) / 60.0, 0.0001)
         let rate = Double(delta) / minutes
 
-        // Negative delta can happen if cache resets; clamp.
         if rate.isNaN || rate.isInfinite || rate < 0 {
             return "Burn: -"
         }
 
         return "Burn: \(Int(rate.rounded())) tok/min"
-    }
-
-    private func nextMidnight(now: Date = .now) -> Date? {
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: now)
-        return cal.date(byAdding: .day, value: 1, to: start)
-    }
-
-    private func nextMondayMidnight(now: Date = .now) -> Date? {
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: now)
-        let weekday = cal.component(.weekday, from: start) // 1=Sun ... 2=Mon ... 7=Sat
-        let daysUntilMon = (9 - weekday) % 7
-        let days = daysUntilMon == 0 ? 7 : daysUntilMon
-        return cal.date(byAdding: .day, value: days, to: start)
     }
 
     private func compactToken(_ value: Int?) -> String {
