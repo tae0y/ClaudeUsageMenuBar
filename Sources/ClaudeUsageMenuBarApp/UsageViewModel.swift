@@ -64,11 +64,11 @@ final class UsageViewModel: ObservableObject {
 
         // If user typed something but it didn't parse, keep the sheet open and show an error.
         if daily == nil && !dailyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Daily Limit 형식이 올바르지 않습니다. 숫자만 입력하세요. 예: 500000 또는 500,000"
+            errorMessage = "Invalid daily budget. Use digits only (commas/underscores/spaces are allowed). Example: 500000 or 500,000."
             return
         }
         if weekly == nil && !weeklyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Weekly Limit 형식이 올바르지 않습니다. 숫자만 입력하세요. 예: 2000000 또는 2,000,000"
+            errorMessage = "Invalid weekly budget. Use digits only (commas/underscores/spaces are allowed). Example: 2000000 or 2,000,000."
             return
         }
 
@@ -79,7 +79,7 @@ final class UsageViewModel: ObservableObject {
         do {
             try settingsStore.save(settings)
         } catch {
-            errorMessage = "Limits 저장 실패: \(error.localizedDescription)"
+            errorMessage = "Failed to save budget: \(error.localizedDescription)"
             return
         }
 

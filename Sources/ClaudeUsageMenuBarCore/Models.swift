@@ -35,20 +35,3 @@ public struct UsageSnapshot: Sendable {
         self.fetchedAt = fetchedAt
     }
 }
-
-public enum ClaudeUsageError: LocalizedError {
-    case invalidResponse
-    case unauthorized
-    case missingUsageFields
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidResponse:
-            return "응답을 해석할 수 없습니다."
-        case .unauthorized:
-            return "인증 실패: Organization ID 또는 Session Key를 확인하세요."
-        case .missingUsageFields:
-            return "일간/주간 사용량 필드를 찾을 수 없습니다."
-        }
-    }
-}

@@ -125,7 +125,7 @@ private struct LimitsView: View {
             TextField("e.g. 2000000", text: $viewModel.weeklyLimitInput)
                 .textFieldStyle(.roundedBorder)
 
-            Text("기본값은 로컬 사용량을 바탕으로 자동 제안되며, 언제든 수정 가능합니다.")
+            Text("Defaults are prefilled and can be changed at any time.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 

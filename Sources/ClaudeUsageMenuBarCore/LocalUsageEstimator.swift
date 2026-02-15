@@ -33,9 +33,9 @@ public enum LocalUsageEstimatorError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .missingStatsCache:
-            return "~/.claude/stats-cache.json 파일을 찾을 수 없습니다. Claude Code를 실행한 뒤 다시 시도하세요."
+            return "Could not find ~/.claude/stats-cache.json. Run Claude Code at least once and try again."
         case .invalidStatsCache:
-            return "~/.claude/stats-cache.json 파싱에 실패했습니다."
+            return "Failed to parse ~/.claude/stats-cache.json."
         }
     }
 }

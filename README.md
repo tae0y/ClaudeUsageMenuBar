@@ -1,25 +1,39 @@
 # Claude Usage MenuBar (macOS)
 
-Claude Code 사용량(일간/주간)을 macOS 메뉴바에서 확인하는 SwiftUI 앱입니다.
+A macOS menu bar app that shows an **estimated** Claude Code token usage for:
+- Rolling **5-hour** window
+- Rolling **7-day** window
 
-## 기능
-- 메뉴바 타이틀에 일간/주간 사용률 표시 (`D xx% | W yy%`)
-- 팝오버에 Daily/Weekly 토큰 사용량 + Progress Bar
-- 5분 자동 갱신 + 수동 Refresh
-- Organization/Session 자동 탐지 (`~/.claude.json`, Claude/브라우저 쿠키, 환경변수)
+This app is designed for personal accounts where org/admin usage APIs are not available.
 
-## 실행
+## How It Works
+- Reads local Claude Code logs and caches:
+  - `~/.claude/projects/**/*.jsonl` (per-message usage)
+  - `~/.claude/stats-cache.json` (optional; may lag)
+- Computes rolling windows by scanning recent JSONL files and deduplicating by message id.
+
+## Token Budget
+Because official limits are not reliably exposed via a public API for personal accounts, the app uses a configurable **token budget**:
+- Default rolling 5h budget: `44,000`
+- Default rolling 7d budget: `308,000` (5h * 7)
+
+You can change these at any time in the app via the `Budget` button.
+
+## Refresh Interval
+- Auto refresh: every 5 minutes
+- Manual refresh: `Refresh` button
+
+## Run
 ```bash
-cd /Users/bachtaeyeong/Documents/New\ project/ClaudeUsageMenuBar
+cd "/Users/bachtaeyeong/10_SrcHub/ClaudeUsageMenuBar"
 swift run ClaudeUsageMenuBar
 ```
 
-## 자동 탐지 우선순위
-- Organization ID: `CLAUDE_ORGANIZATION_ID` → `~/.claude.json` → Claude 쿠키(`lastActiveOrg`)
-- Session Key: `CLAUDE_SESSION_KEY` → Claude/브라우저 쿠키(`sessionKey` 등)
+## Notes / Limitations
+- All values are **estimates** derived from local logs.
+- Usage may differ from what you see in the web UI if you also use Claude outside Claude Code.
+- First load is optimized using a cached snapshot stored in Application Support.
 
-앱은 `https://claude.ai/api/organizations/{orgId}/usage`를 호출합니다.
-
-## 참고
-- Claude API/웹 응답 스키마는 계정 상태에 따라 달라질 수 있어, 여러 필드명을 유연하게 파싱하도록 구현했습니다.
-- 쿠키 값이 OS 암호화 상태면 자동 탐지가 실패할 수 있습니다. 이때는 환경변수(`CLAUDE_ORGANIZATION_ID`, `CLAUDE_SESSION_KEY`)로 실행하면 됩니다.
+## Data Storage
+Settings are stored as JSON at:
+- `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
