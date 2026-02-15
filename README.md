@@ -47,7 +47,6 @@ sudo cp -R "./dist/ClaudeUsageMenuBar.app" "/Applications/"
 
 Install it user-only:
 ```bash
-mkdir -p "$HOME/Applications"
 cp -R "./dist/ClaudeUsageMenuBar.app" "$HOME/Applications/"
 ```
 
