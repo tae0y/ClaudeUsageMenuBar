@@ -31,7 +31,7 @@ You can change these at any time in the app via the `Budget` button.
 - Xcode Command Line Tools
 
 ### Build an app bundle
-From the repo root:
+From the repo root (It takes few minutes): 
 ```bash
 ./scripts/make_app_bundle.sh
 ```
