@@ -212,14 +212,9 @@ final class UsageViewModel: ObservableObject {
     }
 
     private func nextDailyReset(after date: Date) -> Date {
-        guard let anchor = resetCalendar.date(bySettingHour: 18, minute: 0, second: 0, of: date) else {
-            return date.addingTimeInterval(5 * 60 * 60)
-        }
-
-        let step: TimeInterval = 5 * 60 * 60
-        let delta = date.timeIntervalSince(anchor)
-        let n = floor(delta / step) + 1
-        return anchor.addingTimeInterval(n * step)
+        // Daily is treated as rolling 5h; there is no fixed boundary.
+        // Keep this as a synthetic next point for internal state consistency.
+        date.addingTimeInterval(5 * 60 * 60)
     }
 
     private func nextWeeklyReset(after date: Date) -> Date {

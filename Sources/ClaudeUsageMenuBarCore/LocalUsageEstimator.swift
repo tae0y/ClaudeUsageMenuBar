@@ -140,10 +140,10 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let fm = FileManager.default
 
     // Rolling windows:
-    // - daily(5h): current 5h session window (phase-anchored at 18:00, KST)
+    // - daily(5h): rolling last 5 hours
     // - weekly: rolling last 7 days
     let windowEnd = now
-    let fiveHourStart = lastDailyReset(onOrBefore: now)
+    let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
     let sevenDayStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
 
     var dailyMaxByMessageID: [String: Double] = [:]
@@ -208,7 +208,7 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let weekly = Int(weeklyMaxByMessageID.values.reduce(0.0, +).rounded())
 
     let suffix = usedFallback ? ", dedupe=max-by-message-id" : ""
-    let detail = "~/.claude/projects/**/*.jsonl (candidates=\(candidateFiles), scanned=\(scannedFiles), lines=\(scannedLines), windows=daily-anchor-18+weekly-rolling-7d\(suffix))"
+    let detail = "~/.claude/projects/**/*.jsonl (candidates=\(candidateFiles), scanned=\(scannedFiles), lines=\(scannedLines), windows=daily-rolling-5h+weekly-rolling-7d\(suffix))"
     return ProjectScanRollup(daily: daily, weekly: weekly, sourceDetails: detail)
 }
 
@@ -216,16 +216,6 @@ private var resetCalendar: Calendar {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
     return calendar
-}
-
-private func lastDailyReset(onOrBefore date: Date) -> Date {
-    guard let anchor = resetCalendar.date(bySettingHour: 18, minute: 0, second: 0, of: date) else {
-        return date.addingTimeInterval(-5 * 60 * 60)
-    }
-    let step: TimeInterval = 5 * 60 * 60
-    let delta = date.timeIntervalSince(anchor)
-    let n = floor(delta / step)
-    return anchor.addingTimeInterval(n * step)
 }
 
 private func scanOneJSONL(
@@ -361,8 +351,8 @@ private struct TokenWeights {
 // Calibrated defaults from observed local logs:
 // - 5h window is most sensitive to cache-read burstiness, so use a more conservative weight.
 // - 7d window includes longer-lived context reuse, so weight is higher.
-private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0030)
-private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0212)
+private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0010)
+private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0165)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }
