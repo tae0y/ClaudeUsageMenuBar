@@ -1,4 +1,4 @@
-# Claude Usage MenuBar for MacOS
+# Claude Usage MenuBar for macOS
 
 A macOS menu bar app that shows an **estimated** Claude Code token usage for:
 - Rolling **5-hour** window
@@ -37,6 +37,9 @@ You can change these at any time in the app via the `Budget` button.
 swift run
 ```
 
+`swift run` is for local debugging only.  
+To appear in Login Items, use the `.app` bundle built below.
+
 ### Build and Install into Applications
 From the repo root (It takes few minutes): 
 ```bash
@@ -58,12 +61,20 @@ cp -R "./dist/ClaudeUsageMenuBar.app" "$HOME/Applications/"
 
 Then launch it once so macOS registers it.
 
-Auto-Start on Login
+Note:
+- Dragging into Finder `Applications` (or `~/Applications`) means install/copy only.
+- It does not automatically add the app to Login Items.
 
+Auto-Start on Login
 1. Open **System Settings**
 2. Go to **General** -> **Login Items**
 3. Under **Open at Login**, click **+**
 4. Select `ClaudeUsageMenuBar.app` from `/Applications` (or `~/Applications`)
+
+If the app does not appear in the picker:
+1. Open `~/Applications` in Finder.
+2. Drag `ClaudeUsageMenuBar.app` directly into the **Open at Login** list in System Settings.
+3. If needed, launch the app once and try again.
 
 ## Notes / Limitations
 - All values are **estimates** derived from local logs.
