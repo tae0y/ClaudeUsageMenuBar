@@ -351,7 +351,7 @@ private struct TokenWeights {
 // Calibrated defaults from observed local logs:
 // - 5h window is most sensitive to cache-read burstiness, so use a more conservative weight.
 // - 7d window includes longer-lived context reuse, so weight is higher.
-private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0010)
+private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.00133)
 private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0165)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
