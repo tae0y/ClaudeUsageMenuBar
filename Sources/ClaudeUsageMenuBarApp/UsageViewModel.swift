@@ -145,7 +145,7 @@ final class UsageViewModel: ObservableObject {
                 usedTokens: estimate.weeklyTokens,
                 tokenLimit: weeklyLimit,
                 utilization: nil,
-                resetAt: nextDailyReset(after: now)
+                resetAt: nextWeeklyReset(after: now)
             )
 
             snapshot = UsageSnapshot(daily: daily, weekly: weekly)
@@ -223,9 +223,24 @@ final class UsageViewModel: ObservableObject {
     }
 
     private func nextWeeklyReset(after date: Date) -> Date {
-        // Weekly usage is a rolling 7-day window, so effective "update" happens
-        // whenever the 5h session window advances.
-        nextDailyReset(after: date)
+        // Weekly reset is fixed at Sunday 15:00 in Asia/Seoul.
+        var components = DateComponents()
+        components.weekday = 1 // Sunday in Gregorian calendar
+        components.hour = 15
+        components.minute = 0
+        components.second = 0
+
+        if let next = resetCalendar.nextDate(
+            after: date,
+            matching: components,
+            matchingPolicy: .nextTime,
+            repeatedTimePolicy: .first,
+            direction: .forward
+        ) {
+            return next
+        }
+
+        return date.addingTimeInterval(7 * 24 * 60 * 60)
     }
 
     private func compactToken(_ value: Int?) -> String {
