@@ -140,10 +140,10 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let fm = FileManager.default
 
     // Rolling windows:
-    // - "daily": last 5 hours
-    // - "weekly": last 7 days
+    // - daily(5h): current 5h session window (phase-anchored at 18:00, KST)
+    // - weekly: rolling last 7 days
     let windowEnd = now
-    let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
+    let fiveHourStart = lastDailyReset(onOrBefore: now)
     let sevenDayStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
 
     var dailyMaxByMessageID: [String: Double] = [:]
@@ -208,8 +208,24 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let weekly = Int(weeklyMaxByMessageID.values.reduce(0.0, +).rounded())
 
     let suffix = usedFallback ? ", dedupe=max-by-message-id" : ""
-    let detail = "~/.claude/projects/**/*.jsonl (candidates=\(candidateFiles), scanned=\(scannedFiles), lines=\(scannedLines)\(suffix))"
+    let detail = "~/.claude/projects/**/*.jsonl (candidates=\(candidateFiles), scanned=\(scannedFiles), lines=\(scannedLines), windows=daily-anchor-18+weekly-rolling-7d\(suffix))"
     return ProjectScanRollup(daily: daily, weekly: weekly, sourceDetails: detail)
+}
+
+private var resetCalendar: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+    return calendar
+}
+
+private func lastDailyReset(onOrBefore date: Date) -> Date {
+    guard let anchor = resetCalendar.date(bySettingHour: 18, minute: 0, second: 0, of: date) else {
+        return date.addingTimeInterval(-5 * 60 * 60)
+    }
+    let step: TimeInterval = 5 * 60 * 60
+    let delta = date.timeIntervalSince(anchor)
+    let n = floor(delta / step)
+    return anchor.addingTimeInterval(n * step)
 }
 
 private func scanOneJSONL(

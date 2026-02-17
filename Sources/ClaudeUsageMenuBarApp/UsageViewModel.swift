@@ -17,6 +17,11 @@ final class UsageViewModel: ObservableObject {
     private let settingsStore = SettingsStore()
     private var settings: AppSettings
     private let budgetSuggester = BudgetSuggester()
+    private var resetCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+        return calendar
+    }
 
     // For burn rate (tokens/min) estimation since app start.
     // Use lifetime tokens to avoid "rolling window drops" making this negative/noisy.
@@ -48,12 +53,14 @@ final class UsageViewModel: ObservableObject {
         if let w = settings.weeklyTokenLimit { weeklyLimitInput = String(w) }
 
         // Show cached snapshot immediately to avoid "blank" first paint.
-            if let cached = settings.lastSnapshot {
-                let daily = UsageWindow(usedTokens: cached.dailyTokens, tokenLimit: settings.dailyTokenLimit, utilization: nil, resetAt: nil)
-                let weekly = UsageWindow(usedTokens: cached.weeklyTokens, tokenLimit: settings.weeklyTokenLimit, utilization: nil, resetAt: nil)
-                self.snapshot = UsageSnapshot(daily: daily, weekly: weekly, fetchedAt: cached.fetchedAt)
-                self.sourceStatus = "Estimated (cached): \(cached.sourceDescription)"
-            }
+        if let cached = settings.lastSnapshot {
+            let dailyEndAt = nextDailyReset(after: cached.fetchedAt)
+            let weeklyEndAt = nextWeeklyReset(after: cached.fetchedAt)
+            let daily = UsageWindow(usedTokens: cached.dailyTokens, tokenLimit: settings.dailyTokenLimit, utilization: nil, resetAt: dailyEndAt)
+            let weekly = UsageWindow(usedTokens: cached.weeklyTokens, tokenLimit: settings.weeklyTokenLimit, utilization: nil, resetAt: weeklyEndAt)
+            self.snapshot = UsageSnapshot(daily: daily, weekly: weekly, fetchedAt: cached.fetchedAt)
+            self.sourceStatus = "Estimated (cached): \(cached.sourceDescription)"
+        }
     }
 
     var menuTitle: String {
@@ -126,18 +133,19 @@ final class UsageViewModel: ObservableObject {
             }.value
             let dailyLimit = settings.dailyTokenLimit
             let weeklyLimit = settings.weeklyTokenLimit
+            let now = Date()
 
             let daily = UsageWindow(
                 usedTokens: estimate.dailyTokens,
                 tokenLimit: dailyLimit,
                 utilization: nil,
-                resetAt: nil
+                resetAt: nextDailyReset(after: now)
             )
             let weekly = UsageWindow(
                 usedTokens: estimate.weeklyTokens,
                 tokenLimit: weeklyLimit,
                 utilization: nil,
-                resetAt: nil
+                resetAt: nextDailyReset(after: now)
             )
 
             snapshot = UsageSnapshot(daily: daily, weekly: weekly)
@@ -201,6 +209,23 @@ final class UsageViewModel: ObservableObject {
         }
 
         return "Burn: \(Int(rate.rounded())) tok/min"
+    }
+
+    private func nextDailyReset(after date: Date) -> Date {
+        guard let anchor = resetCalendar.date(bySettingHour: 18, minute: 0, second: 0, of: date) else {
+            return date.addingTimeInterval(5 * 60 * 60)
+        }
+
+        let step: TimeInterval = 5 * 60 * 60
+        let delta = date.timeIntervalSince(anchor)
+        let n = floor(delta / step) + 1
+        return anchor.addingTimeInterval(n * step)
+    }
+
+    private func nextWeeklyReset(after date: Date) -> Date {
+        // Weekly usage is a rolling 7-day window, so effective "update" happens
+        // whenever the 5h session window advances.
+        nextDailyReset(after: date)
     }
 
     private func compactToken(_ value: Int?) -> String {

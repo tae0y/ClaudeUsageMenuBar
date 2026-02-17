@@ -10,7 +10,7 @@ struct MenuBarContentView: View {
             header
 
             usageSection(title: "5h (rolling)", window: viewModel.snapshot?.daily)
-            usageSection(title: "7d (rolling)", window: viewModel.snapshot?.weekly)
+            usageSection(title: "7d (rolling)", window: viewModel.snapshot?.weekly, includeEndDate: true)
 
             Text(viewModel.burnRateStatus)
                 .font(.caption2.monospacedDigit())
@@ -60,7 +60,7 @@ struct MenuBarContentView: View {
     }
 
     @ViewBuilder
-    private func usageSection(title: String, window: UsageWindow?) -> some View {
+    private func usageSection(title: String, window: UsageWindow?, includeEndDate: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.subheadline.bold())
@@ -78,7 +78,7 @@ struct MenuBarContentView: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                     if let resetAt = window.resetAt {
-                        Text(resetAt.formatted(date: .abbreviated, time: .shortened))
+                        Text(endText(resetAt, includeDate: includeEndDate))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -104,6 +104,18 @@ struct MenuBarContentView: View {
         guard let p = window.progress else { return "-" }
         let remaining = max(0, min(1 - p, 1)) * 100
         return "\(Int(remaining.rounded()))% left"
+    }
+
+    private func endText(_ date: Date, includeDate: Bool) -> String {
+        if includeDate {
+            let style = Date.FormatStyle()
+                .month(.abbreviated)
+                .day(.defaultDigits)
+                .hour(.defaultDigits(amPM: .abbreviated))
+                .minute(.twoDigits)
+            return "Ends \(date.formatted(style))"
+        }
+        return "Ends \(date.formatted(date: .omitted, time: .shortened))"
     }
 }
 
