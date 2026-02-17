@@ -146,8 +146,8 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
     let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
     let sevenDayStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
 
-    var dailyMaxByMessageID: [String: Int] = [:]
-    var weeklyMaxByMessageID: [String: Int] = [:]
+    var dailyMaxByMessageID: [String: Double] = [:]
+    var weeklyMaxByMessageID: [String: Double] = [:]
 
     var candidateFiles = 0
     var scannedFiles = 0
@@ -197,15 +197,15 @@ private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
         usedFallback = usedFallback || didUse
 
         for (id, total) in d {
-            if (dailyMaxByMessageID[id] ?? 0) < total { dailyMaxByMessageID[id] = total }
+            if (dailyMaxByMessageID[id] ?? 0.0) < total { dailyMaxByMessageID[id] = total }
         }
         for (id, total) in w {
-            if (weeklyMaxByMessageID[id] ?? 0) < total { weeklyMaxByMessageID[id] = total }
+            if (weeklyMaxByMessageID[id] ?? 0.0) < total { weeklyMaxByMessageID[id] = total }
         }
     }
 
-    let daily = dailyMaxByMessageID.values.reduce(0, +)
-    let weekly = weeklyMaxByMessageID.values.reduce(0, +)
+    let daily = Int(dailyMaxByMessageID.values.reduce(0.0, +).rounded())
+    let weekly = Int(weeklyMaxByMessageID.values.reduce(0.0, +).rounded())
 
     let suffix = usedFallback ? ", dedupe=max-by-message-id" : ""
     let detail = "~/.claude/projects/**/*.jsonl (candidates=\(candidateFiles), scanned=\(scannedFiles), lines=\(scannedLines)\(suffix))"
@@ -217,14 +217,14 @@ private func scanOneJSONL(
     window5hStart: Date,
     window7dStart: Date,
     windowEnd: Date
-) -> (daily: [String: Int], weekly: [String: Int], lineCount: Int, didUse: Bool) {
+) -> (daily: [String: Double], weekly: [String: Double], lineCount: Int, didUse: Bool) {
     guard let data = try? Data(contentsOf: url),
           let text = String(data: data, encoding: .utf8) else {
         return ([:], [:], 0, false)
     }
 
-    var daily: [String: Int] = [:]
-    var weekly: [String: Int] = [:]
+    var daily: [String: Double] = [:]
+    var weekly: [String: Double] = [:]
     var lines = 0
     var didUse = false
 
@@ -243,11 +243,11 @@ private func scanOneJSONL(
         didUse = true
 
         if ts >= window5hStart && ts < windowEnd {
-            let total = max(0, record.weightedTotal(weights: dailyWeights))
+            let total = max(0.0, record.weightedTotal(weights: dailyWeights))
             if (daily[record.id] ?? 0) < total { daily[record.id] = total }
         }
         if ts >= window7dStart && ts < windowEnd {
-            let total = max(0, record.weightedTotal(weights: weeklyWeights))
+            let total = max(0.0, record.weightedTotal(weights: weeklyWeights))
             if (weekly[record.id] ?? 0) < total { weekly[record.id] = total }
         }
     }
@@ -262,11 +262,11 @@ private struct MessageUsageRecord {
     let cacheCreationInputTokens: Int
     let cacheReadInputTokens: Int
 
-    func weightedTotal(weights: TokenWeights) -> Int {
+    func weightedTotal(weights: TokenWeights) -> Double {
         let io = inputTokens + outputTokens
-        let weightedCacheCreate = Int((Double(cacheCreationInputTokens) * weights.cacheCreationWeight).rounded())
-        let weightedCacheRead = Int((Double(cacheReadInputTokens) * weights.cacheReadWeight).rounded())
-        return io + weightedCacheCreate + weightedCacheRead
+        let weightedCacheCreate = Double(cacheCreationInputTokens) * weights.cacheCreationWeight
+        let weightedCacheRead = Double(cacheReadInputTokens) * weights.cacheReadWeight
+        return Double(io) + weightedCacheCreate + weightedCacheRead
     }
 }
 
@@ -343,9 +343,9 @@ private struct TokenWeights {
 }
 
 // Calibrated defaults from observed local logs:
-// - 5h window is more sensitive to cache-read spikes, so weight is lower.
+// - 5h window is most sensitive to cache-read burstiness, so use a more conservative weight.
 // - 7d window includes longer-lived context reuse, so weight is higher.
-private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0045)
+private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0030)
 private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0212)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
