@@ -18,7 +18,7 @@ Because official limits are not reliably exposed via a public API for personal a
 
 Defaults:
 - Rolling 5h budget: `44,000`
-- Rolling 7d budget: `308,000` (5h * 7)
+- Rolling 7d budget: `1,478,400` (`44,000 * (7*24/5)`, i.e. 33.6 rolling 5h windows)
 
 You can change these at any time in the app via the `Budget` button.
 

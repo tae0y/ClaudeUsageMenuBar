@@ -25,6 +25,16 @@ final class UsageViewModel: ObservableObject {
 
     init() {
         self.settings = settingsStore.load()
+
+        // One-time migration for old defaults:
+        // legacy: daily(5h)=44,000 and weekly(7d)=308,000 (daily*7)
+        // new: weekly is derived from 5h windows across 7d => daily*33.6
+        if settings.dailyTokenLimit == 44_000, settings.weeklyTokenLimit == 308_000 {
+            let suggested = budgetSuggester.suggest()
+            settings.weeklyTokenLimit = suggested.weeklyTokenBudget
+            try? settingsStore.save(settings)
+        }
+
         if settings.dailyTokenLimit == nil || settings.weeklyTokenLimit == nil {
             let suggested = budgetSuggester.suggest()
             // Only fill missing fields (user can change later).

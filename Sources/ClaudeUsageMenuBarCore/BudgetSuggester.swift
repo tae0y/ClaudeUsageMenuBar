@@ -18,13 +18,14 @@ public struct BudgetSuggester: Sendable {
     public func suggest(now: Date = .now) -> SuggestedBudgets {
         // User-provided defaults:
         // - Daily budget: 44,000 tokens per 5-hour window
-        // - Weekly budget: 7-day budget based on the above daily number
+        // - Weekly budget: 7-day budget converted from 5-hour rolling windows
+        //   7 days = 168 hours, 168 / 5 = 33.6 windows
         let daily = 44_000
-        let weekly = daily * 7
+        let weekly = Int((Double(daily) * (7.0 * 24.0 / 5.0)).rounded())
         return SuggestedBudgets(
             dailyTokenBudget: daily,
             weeklyTokenBudget: weekly,
-            sourceDescription: "default: daily(5h)=44,000; weekly=7d"
+            sourceDescription: "default: daily(5h)=44,000; weekly(7d)=daily*33.6"
         )
     }
 }

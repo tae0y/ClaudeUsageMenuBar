@@ -305,9 +305,8 @@ private func totalTokens(from usage: [String: Any]) -> Int? {
     let input = intFrom(usage, key: "input_tokens") ?? 0
     let output = intFrom(usage, key: "output_tokens") ?? 0
 
-    // Claude Code commonly emits these; they can dwarf input/output when caching is involved.
+    // Claude Code commonly emits these.
     var cacheCreate = intFrom(usage, key: "cache_creation_input_tokens") ?? 0
-    let cacheRead = intFrom(usage, key: "cache_read_input_tokens") ?? 0
 
     // Some logs omit cache_creation_input_tokens but include a breakdown under cache_creation.
     if cacheCreate == 0, let cc = usage["cache_creation"] as? [String: Any] {
@@ -316,9 +315,19 @@ private func totalTokens(from usage: [String: Any]) -> Int? {
         cacheCreate = eph5m + eph1h
     }
 
-    let total = input + output + cacheCreate + cacheRead
+    // For menu percentage:
+    // - exclude cache_read_input_tokens (often dominates and overestimates perceived usage)
+    // - down-weight cache_creation_input_tokens to reduce persistent overestimation
+    //   in cache-heavy coding sessions.
+    let weightedCacheCreate = Int((Double(cacheCreate) * cacheCreationWeight).rounded())
+    let total = input + output + weightedCacheCreate
     return total > 0 ? total : nil
 }
+
+// Empirical default tuned for Claude Code log patterns:
+// cache creation is meaningful, but counting it at 100% tends to overshoot
+// the usage users perceive in Claude UI.
+private let cacheCreationWeight: Double = 0.123
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }
