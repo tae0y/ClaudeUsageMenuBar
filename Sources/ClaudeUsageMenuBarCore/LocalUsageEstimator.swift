@@ -242,11 +242,12 @@ private func scanOneJSONL(
         guard let record = extractMessageUsage(any: any) else { continue }
         didUse = true
 
-        let total = max(0, record.totalTokens)
         if ts >= window5hStart && ts < windowEnd {
+            let total = max(0, record.weightedTotal(weights: dailyWeights))
             if (daily[record.id] ?? 0) < total { daily[record.id] = total }
         }
         if ts >= window7dStart && ts < windowEnd {
+            let total = max(0, record.weightedTotal(weights: weeklyWeights))
             if (weekly[record.id] ?? 0) < total { weekly[record.id] = total }
         }
     }
@@ -256,7 +257,17 @@ private func scanOneJSONL(
 
 private struct MessageUsageRecord {
     let id: String
-    let totalTokens: Int
+    let inputTokens: Int
+    let outputTokens: Int
+    let cacheCreationInputTokens: Int
+    let cacheReadInputTokens: Int
+
+    func weightedTotal(weights: TokenWeights) -> Int {
+        let io = inputTokens + outputTokens
+        let weightedCacheCreate = Int((Double(cacheCreationInputTokens) * weights.cacheCreationWeight).rounded())
+        let weightedCacheRead = Int((Double(cacheReadInputTokens) * weights.cacheReadWeight).rounded())
+        return io + weightedCacheCreate + weightedCacheRead
+    }
 }
 
 private func extractMessageUsage(any: Any) -> MessageUsageRecord? {
@@ -265,12 +276,12 @@ private func extractMessageUsage(any: Any) -> MessageUsageRecord? {
     if let dict = any as? [String: Any],
        let msg = dict["message"] as? [String: Any],
        let usage = msg["usage"] as? [String: Any] {
-        let id = (msg["id"] as? String)
+       let id = (msg["id"] as? String)
             ?? (dict["messageId"] as? String)
             ?? (dict["message_id"] as? String)
             ?? (dict["uuid"] as? String)
-        if let id, let total = totalTokens(from: usage), total > 0 {
-            return MessageUsageRecord(id: id, totalTokens: total)
+        if let id, let record = usageRecord(from: usage, id: id) {
+            return record
         }
     }
 
@@ -288,8 +299,8 @@ private func extractMessageUsage(any: Any) -> MessageUsageRecord? {
                     ?? (dict["messageId"] as? String)
                     ?? (dict["message_id"] as? String)
                     ?? (dict["uuid"] as? String)
-                if let id, let total = totalTokens(from: usage), total > 0 {
-                    return MessageUsageRecord(id: id, totalTokens: total)
+                if let id, let record = usageRecord(from: usage, id: id) {
+                    return record
                 }
             }
             for (_, v) in dict { stack.append(v) }
@@ -301,12 +312,13 @@ private func extractMessageUsage(any: Any) -> MessageUsageRecord? {
     return nil
 }
 
-private func totalTokens(from usage: [String: Any]) -> Int? {
+private func usageRecord(from usage: [String: Any], id: String) -> MessageUsageRecord? {
     let input = intFrom(usage, key: "input_tokens") ?? 0
     let output = intFrom(usage, key: "output_tokens") ?? 0
 
     // Claude Code commonly emits these.
     var cacheCreate = intFrom(usage, key: "cache_creation_input_tokens") ?? 0
+    let cacheRead = intFrom(usage, key: "cache_read_input_tokens") ?? 0
 
     // Some logs omit cache_creation_input_tokens but include a breakdown under cache_creation.
     if cacheCreate == 0, let cc = usage["cache_creation"] as? [String: Any] {
@@ -315,19 +327,26 @@ private func totalTokens(from usage: [String: Any]) -> Int? {
         cacheCreate = eph5m + eph1h
     }
 
-    // For menu percentage:
-    // - exclude cache_read_input_tokens (often dominates and overestimates perceived usage)
-    // - down-weight cache_creation_input_tokens to reduce persistent overestimation
-    //   in cache-heavy coding sessions.
-    let weightedCacheCreate = Int((Double(cacheCreate) * cacheCreationWeight).rounded())
-    let total = input + output + weightedCacheCreate
-    return total > 0 ? total : nil
+    if input + output + cacheCreate + cacheRead <= 0 { return nil }
+    return MessageUsageRecord(
+        id: id,
+        inputTokens: input,
+        outputTokens: output,
+        cacheCreationInputTokens: cacheCreate,
+        cacheReadInputTokens: cacheRead
+    )
 }
 
-// Empirical default tuned for Claude Code log patterns:
-// cache creation is meaningful, but counting it at 100% tends to overshoot
-// the usage users perceive in Claude UI.
-private let cacheCreationWeight: Double = 0.123
+private struct TokenWeights {
+    let cacheCreationWeight: Double
+    let cacheReadWeight: Double
+}
+
+// Calibrated defaults from observed local logs:
+// - 5h window is more sensitive to cache-read spikes, so weight is lower.
+// - 7d window includes longer-lived context reuse, so weight is higher.
+private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0045)
+private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0212)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }

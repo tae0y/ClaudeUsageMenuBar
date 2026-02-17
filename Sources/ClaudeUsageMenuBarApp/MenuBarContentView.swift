@@ -34,6 +34,9 @@ struct MenuBarContentView: View {
                 Button("Budget") {
                     viewModel.showingSettings = true
                 }
+                .popover(isPresented: $viewModel.showingSettings, arrowEdge: .bottom) {
+                    LimitsView(viewModel: viewModel)
+                }
                 Spacer()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
@@ -42,9 +45,6 @@ struct MenuBarContentView: View {
         }
         .padding(12)
         .frame(width: 320)
-        .sheet(isPresented: $viewModel.showingSettings) {
-            LimitsView(viewModel: viewModel)
-        }
     }
 
     private var header: some View {
@@ -117,12 +117,12 @@ private struct LimitsView: View {
 
             Text("5h Budget (tokens)")
                 .font(.caption)
-            TextField("e.g. 500000", text: $viewModel.dailyLimitInput)
+            TextField("e.g. 44,000", text: $viewModel.dailyLimitInput)
                 .textFieldStyle(.roundedBorder)
 
             Text("7d Budget (tokens)")
                 .font(.caption)
-            TextField("e.g. 2000000", text: $viewModel.weeklyLimitInput)
+            TextField("e.g. 1,478,400", text: $viewModel.weeklyLimitInput)
                 .textFieldStyle(.roundedBorder)
 
             Text("Defaults are prefilled and can be changed at any time.")

@@ -27,9 +27,10 @@ final class UsageViewModel: ObservableObject {
         self.settings = settingsStore.load()
 
         // One-time migration for old defaults:
-        // legacy: daily(5h)=44,000 and weekly(7d)=308,000 (daily*7)
-        // new: weekly is derived from 5h windows across 7d => daily*33.6
-        if settings.dailyTokenLimit == 44_000, settings.weeklyTokenLimit == 308_000 {
+        // legacy weekly defaults were 308,000 (daily*7) and 2,000,000 (placeholder-era value).
+        // new: weekly is derived from 5h windows across 7d => daily*33.6 (1,478,400 when daily is 44,000)
+        if settings.dailyTokenLimit == 44_000,
+           settings.weeklyTokenLimit == 308_000 || settings.weeklyTokenLimit == 2_000_000 {
             let suggested = budgetSuggester.suggest()
             settings.weeklyTokenLimit = suggested.weeklyTokenBudget
             try? settingsStore.save(settings)
@@ -90,11 +91,11 @@ final class UsageViewModel: ObservableObject {
 
         // If user typed something but it didn't parse, keep the sheet open and show an error.
         if daily == nil && !dailyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid 5h budget. Use digits only (commas/underscores/spaces are allowed). Example: 500000 or 500,000."
+            errorMessage = "Invalid 5h budget. Use digits only (commas/underscores/spaces are allowed). Example: 44000 or 44,000."
             return
         }
         if weekly == nil && !weeklyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid 7d budget. Use digits only (commas/underscores/spaces are allowed). Example: 2000000 or 2,000,000."
+            errorMessage = "Invalid 7d budget. Use digits only (commas/underscores/spaces are allowed). Example: 1478400 or 1,478,400."
             return
         }
 

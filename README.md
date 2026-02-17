@@ -11,7 +11,7 @@ This app is designed for personal accounts where org/admin usage APIs are not av
   - `~/.claude/projects/**/*.jsonl` (per-message usage)
   - `~/.claude/stats-cache.json` (optional; may lag)
 - Computes rolling windows by scanning recent JSONL files and deduplicating by message id.
-- Counts input/output tokens and Claude Code cache tokens (`cache_read_input_tokens`, `cache_creation_input_tokens`) when present.
+- Counts input/output tokens and applies window-specific partial weights to Claude Code cache tokens (`cache_read_input_tokens`, `cache_creation_input_tokens`) to reduce 5h spike bias while keeping 7d trend fidelity.
 
 ### Token Budget
 Because official limits are not reliably exposed via a public API for personal accounts, the app uses a configurable **token budget**.
