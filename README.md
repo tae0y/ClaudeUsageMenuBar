@@ -1,83 +1,99 @@
-# Claude Usage MenuBar for macOS
+# Claude Usage MenuBar
 
-A macOS menu bar app that shows an **estimated** Claude Code token usage for:
-- Rolling **5-hour** window
-- Rolling **7-day** window
+A native macOS menu bar app that shows **estimated** Claude Code token usage in two rolling windows: **5-hour** (daily) and **7-day** (weekly).
 
-This app is designed for personal accounts where org/admin usage APIs are not available.
+Designed for personal accounts where org/admin usage APIs are not available.
 
 ## How It Works
-- Reads local Claude Code logs and caches:
-  - `~/.claude/projects/**/*.jsonl` (per-message usage)
-  - `~/.claude/stats-cache.json` (optional; may lag)
-- Computes rolling windows by scanning recent JSONL files and deduplicating by message id.
-- Counts input/output tokens and applies window-specific partial weights to Claude Code cache tokens (`cache_read_input_tokens`, `cache_creation_input_tokens`) to reduce 5h spike bias while keeping 7d trend fidelity.
+
+- Reads local Claude Code logs:
+  - `~/.claude/projects/**/*.jsonl` — per-message usage (primary source)
+  - `~/.claude/stats-cache.json` — fallback if JSONL yields no data
+- Deduplicates entries by message ID and applies rolling window cutoffs
+- Applies window-specific weights to cache tokens to reduce spike bias
 
 ### Token Budget
-Because official limits are not reliably exposed via a public API for personal accounts, the app uses a configurable **token budget**.
 
-Defaults:
-- Rolling 5h budget: `44,000`
-- Rolling 7d budget: `1,478,400` (`44,000 * (7*24/5)`, i.e. 33.6 rolling 5h windows)
+Official limits are not exposed via public API for personal accounts, so the app uses a configurable token budget.
 
-You can change these at any time in the app via the `Budget` button.
+Default budgets:
 
-### Refresh Interval
-- Auto refresh: every 5 minutes
-- Manual refresh: `Refresh` button
+| Window | Default | Basis |
+|--------|---------|-------|
+| Rolling 5h | 44,000 | — |
+| Rolling 7d | 1,478,400 | `44,000 × (7×24÷5)` (33.6 rolling windows) |
 
-## How To Use
+You can change these at any time via the **Budget** button in the app.
 
-### Prerequisites
+### Refresh
+
+- Auto refresh: every **5 minutes**
+- Manual refresh: **Refresh** button
+
+## Prerequisites
+
+- macOS 14 or later
 - Xcode Command Line Tools
 
-### Build and Debug
+    ```bash
+    xcode-select --install
+    ```
 
-```bash
-swift run
-```
+## Getting Started
 
-`swift run` is for local debugging only.  
-To appear in Login Items, use the `.app` bundle built below.
+### Build and debug
 
-### Build and Install into Applications
-From the repo root (It takes few minutes): 
-```bash
-./scripts/make_app_bundle.sh
-```
+1. Clone the repository.
 
-This creates:
-- `./dist/ClaudeUsageMenuBar.app`
+    ```bash
+    git clone https://github.com/your-username/ClaudeUsageMenuBar.git
+    cd ClaudeUsageMenuBar
+    ```
 
-Install it system-wide:
-```bash
-sudo cp -R "./dist/ClaudeUsageMenuBar.app" "/Applications/"
-```
+1. Run the app in debug mode (CLI only — no menu bar icon).
 
-Install it user-only:
-```bash
-cp -R "./dist/ClaudeUsageMenuBar.app" "$HOME/Applications/"
-```
+    ```bash
+    swift run
+    ```
 
-Then launch it once so macOS registers it.
+### Build and install
 
-Note:
-- Dragging into Finder `Applications` (or `~/Applications`) means install/copy only.
-- It does not automatically add the app to Login Items.
+1. Build the `.app` bundle (takes a few minutes).
 
-Auto-Start on Login
-1. Open **System Settings**
-2. Go to **General** -> **Login Items**
-3. Under **Open at Login**, click **+**
-4. Select `ClaudeUsageMenuBar.app` from `/Applications` (or `~/Applications`)
+    ```bash
+    ./scripts/make_app_bundle.sh
+    ```
 
-If the app does not appear in the picker:
-1. Open `~/Applications` in Finder.
-2. Drag `ClaudeUsageMenuBar.app` directly into the **Open at Login** list in System Settings.
-3. If needed, launch the app once and try again.
+    This creates `./dist/ClaudeUsageMenuBar.app`.
 
-## Notes / Limitations
+1. Install the app.
+
+    - **User-only** (recommended):
+
+        ```bash
+        cp -R "./dist/ClaudeUsageMenuBar.app" "$HOME/Applications/"
+        ```
+
+    - **System-wide**:
+
+        ```bash
+        sudo cp -R "./dist/ClaudeUsageMenuBar.app" "/Applications/"
+        ```
+
+1. Launch the app once so macOS registers it.
+
+### Enable auto-start on login
+
+1. Open **System Settings**.
+1. Go to **General** → **Login Items**.
+1. Under **Open at Login**, click **+**.
+1. Select `ClaudeUsageMenuBar.app` from `/Applications` or `~/Applications`.
+
+> If the app does not appear in the picker, open `~/Applications` in Finder and drag `ClaudeUsageMenuBar.app` directly into the **Open at Login** list. Launch the app once and try again if needed.
+
+## Notes and Limitations
+
 - All values are **estimates** derived from local logs.
-- Usage may differ from what you see in the web UI if you also use Claude outside Claude Code.
+- Usage may differ from the web UI if you also use Claude outside Claude Code.
 - First load is optimized using a cached snapshot stored in Application Support.
-- Settings are stored as JSON at: `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
+- Settings are stored at: `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
