@@ -2,4 +2,4 @@
 .cache
 .DS_Store
 dist
-docs/
+localdocs/
