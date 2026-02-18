@@ -11,17 +11,16 @@ final class UsageViewModel: ObservableObject {
     @Published var showingSettings = false
     @Published var dailyLimitInput = ""
     @Published var weeklyLimitInput = ""
+    /// "YYYY-MM-DD HH:mm" string the user types for the daily anchor
+    @Published var dailyAnchorInput = ""
+    /// "YYYY-MM-DD HH:mm" string the user types for the weekly anchor
+    @Published var weeklyAnchorInput = ""
 
     private let estimator = LocalUsageEstimator()
     private var timer: Timer?
     private let settingsStore = SettingsStore()
     private var settings: AppSettings
     private let budgetSuggester = BudgetSuggester()
-    private var resetCalendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
-        return calendar
-    }
 
     // For burn rate (tokens/min) estimation since app start.
     // Use lifetime tokens to avoid "rolling window drops" making this negative/noisy.
@@ -51,6 +50,8 @@ final class UsageViewModel: ObservableObject {
 
         if let d = settings.dailyTokenLimit { dailyLimitInput = String(d) }
         if let w = settings.weeklyTokenLimit { weeklyLimitInput = String(w) }
+        dailyAnchorInput = settings.dailyAnchorDate.map { anchorInputFormatter.string(from: $0) } ?? ""
+        weeklyAnchorInput = settings.weeklyAnchorDate.map { anchorInputFormatter.string(from: $0) } ?? ""
 
         // Show cached snapshot immediately to avoid "blank" first paint.
         if let cached = settings.lastSnapshot {
@@ -62,6 +63,9 @@ final class UsageViewModel: ObservableObject {
             self.sourceStatus = "Estimated (cached): \(cached.sourceDescription)"
         }
     }
+
+    var dailyWindowLabel: String { "5h (rolling)" }
+    var weeklyWindowLabel: String { "7d (rolling)" }
 
     var menuTitle: String {
         // Keep title short; show 5h budget utilization as a percentage.
@@ -98,22 +102,45 @@ final class UsageViewModel: ObservableObject {
 
         // If user typed something but it didn't parse, keep the sheet open and show an error.
         if daily == nil && !dailyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid 5h budget. Use digits only (commas/underscores/spaces are allowed). Example: 44000 or 44,000."
+            errorMessage = "Invalid daily budget. Use digits only (commas/underscores/spaces are allowed). Example: 44000 or 44,000."
             return
         }
         if weekly == nil && !weeklyRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Invalid 7d budget. Use digits only (commas/underscores/spaces are allowed). Example: 1478400 or 1,478,400."
+            errorMessage = "Invalid weekly budget. Use digits only (commas/underscores/spaces are allowed). Example: 1478400 or 1,478,400."
             return
         }
 
-        settings.dailyTokenLimit = (daily != nil && daily! > 0) ? daily : nil
+        // Validate anchor dates.
+        let dailyAnchorRaw = dailyAnchorInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let weeklyAnchorRaw = weeklyAnchorInput.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        var dailyAnchor: Date? = nil
+        if !dailyAnchorRaw.isEmpty {
+            guard let d = anchorInputFormatter.date(from: dailyAnchorRaw) else {
+                errorMessage = "Invalid daily reset time. Use format: YYYY-MM-DD HH:mm (e.g. 2026-02-18 09:00)"
+                return
+            }
+            dailyAnchor = d
+        }
+
+        var weeklyAnchor: Date? = nil
+        if !weeklyAnchorRaw.isEmpty {
+            guard let d = anchorInputFormatter.date(from: weeklyAnchorRaw) else {
+                errorMessage = "Invalid weekly reset time. Use format: YYYY-MM-DD HH:mm (e.g. 2026-02-18 09:00)"
+                return
+            }
+            weeklyAnchor = d
+        }
+
+        settings.dailyTokenLimit = (daily != nil && daily! > 0) ? daily : nil
         settings.weeklyTokenLimit = (weekly != nil && weekly! > 0) ? weekly : nil
+        settings.dailyAnchorDate = dailyAnchor
+        settings.weeklyAnchorDate = weeklyAnchor
 
         do {
             try settingsStore.save(settings)
         } catch {
-            errorMessage = "Failed to save budget: \(error.localizedDescription)"
+            errorMessage = "Failed to save settings: \(error.localizedDescription)"
             return
         }
 
@@ -211,21 +238,45 @@ final class UsageViewModel: ObservableObject {
         return "Burn: \(Int(rate.rounded())) tok/min"
     }
 
+    /// Returns the next daily reset time after `date`.
+    /// Logic: find the most recent past anchor (anchor + N*5h ≤ date), then add 5h.
     private func nextDailyReset(after date: Date) -> Date {
-        // Daily is treated as rolling 5h; there is no fixed boundary.
-        // Keep this as a synthetic next point for internal state consistency.
-        date.addingTimeInterval(5 * 60 * 60)
+        let intervalSec: TimeInterval = 5 * 60 * 60
+        guard let anchor = settings.dailyAnchorDate else {
+            // No anchor configured — synthetic rolling window from now.
+            return date.addingTimeInterval(intervalSec)
+        }
+        // How many full 5h cycles have elapsed since anchor?
+        let elapsed = date.timeIntervalSince(anchor)
+        let cyclesPassed = floor(elapsed / intervalSec)
+        let lastReset = anchor.addingTimeInterval(cyclesPassed * intervalSec)
+        return lastReset.addingTimeInterval(intervalSec)
     }
 
+    /// Returns the next weekly reset time after `date`.
+    /// Logic: find the most recent past anchor (anchor + N*7d ≤ date), then add 7d.
     private func nextWeeklyReset(after date: Date) -> Date {
-        // Weekly reset is fixed at Sunday 15:00 in Asia/Seoul.
+        let intervalSec: TimeInterval = 7 * 24 * 60 * 60
+        guard let anchor = settings.weeklyAnchorDate else {
+            // No anchor configured — fall back to Sunday 15:00 Asia/Seoul.
+            return nextSundaySeoulReset(after: date)
+        }
+        let elapsed = date.timeIntervalSince(anchor)
+        let cyclesPassed = floor(elapsed / intervalSec)
+        let lastReset = anchor.addingTimeInterval(cyclesPassed * intervalSec)
+        return lastReset.addingTimeInterval(intervalSec)
+    }
+
+    private func nextSundaySeoulReset(after date: Date) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
         var components = DateComponents()
-        components.weekday = 1 // Sunday in Gregorian calendar
+        components.weekday = 1 // Sunday
         components.hour = 15
         components.minute = 0
         components.second = 0
 
-        if let next = resetCalendar.nextDate(
+        if let next = calendar.nextDate(
             after: date,
             matching: components,
             matchingPolicy: .nextTime,
@@ -234,7 +285,6 @@ final class UsageViewModel: ObservableObject {
         ) {
             return next
         }
-
         return date.addingTimeInterval(7 * 24 * 60 * 60)
     }
 
@@ -252,3 +302,14 @@ final class UsageViewModel: ObservableObject {
         return String(value)
     }
 }
+
+// MARK: - Shared formatter
+
+private let anchorInputFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "yyyy-MM-dd HH:mm"
+    // Use local timezone so user inputs local time.
+    f.timeZone = TimeZone.current
+    return f
+}()

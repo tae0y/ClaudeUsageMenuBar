@@ -4,11 +4,27 @@ public struct AppSettings: Codable, Sendable {
     public var dailyTokenLimit: Int?
     public var weeklyTokenLimit: Int?
     public var lastSnapshot: PersistedSnapshot?
+    /// Anchor point for the 5-hour rolling daily window.
+    /// The window cycles every 5h from this point: anchor, anchor+5h, anchor+10h, ...
+    /// nil = use app-start time as anchor (rolling from now).
+    public var dailyAnchorDate: Date?
+    /// Anchor point for the 7-day rolling weekly window.
+    /// Next reset = last anchor + 7d; after that anchor advances by 7d, etc.
+    /// nil = use app-start time as anchor.
+    public var weeklyAnchorDate: Date?
 
-    public init(dailyTokenLimit: Int? = nil, weeklyTokenLimit: Int? = nil, lastSnapshot: PersistedSnapshot? = nil) {
+    public init(
+        dailyTokenLimit: Int? = nil,
+        weeklyTokenLimit: Int? = nil,
+        lastSnapshot: PersistedSnapshot? = nil,
+        dailyAnchorDate: Date? = nil,
+        weeklyAnchorDate: Date? = nil
+    ) {
         self.dailyTokenLimit = dailyTokenLimit
         self.weeklyTokenLimit = weeklyTokenLimit
         self.lastSnapshot = lastSnapshot
+        self.dailyAnchorDate = dailyAnchorDate
+        self.weeklyAnchorDate = weeklyAnchorDate
     }
 }
 

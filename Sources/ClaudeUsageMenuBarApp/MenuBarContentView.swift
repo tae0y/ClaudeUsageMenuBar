@@ -9,8 +9,8 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            usageSection(title: "5h (rolling)", window: viewModel.snapshot?.daily)
-            usageSection(title: "7d (rolling)", window: viewModel.snapshot?.weekly, includeEndDate: true)
+            usageSection(title: viewModel.dailyWindowLabel, window: viewModel.snapshot?.daily)
+            usageSection(title: viewModel.weeklyWindowLabel, window: viewModel.snapshot?.weekly, includeEndDate: true)
 
             Text(viewModel.burnRateStatus)
                 .font(.caption2.monospacedDigit())
@@ -31,7 +31,7 @@ struct MenuBarContentView: View {
                 Button("Refresh") {
                     Task { await viewModel.refresh() }
                 }
-                Button("Budget") {
+                Button("Configure") {
                     viewModel.showingSettings = true
                 }
                 .popover(isPresented: $viewModel.showingSettings, arrowEdge: .bottom) {
@@ -124,15 +124,41 @@ private struct LimitsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Token Budget (Estimated Mode)")
+            Text("Settings")
                 .font(.title3.bold())
 
-            Text("5h Budget (tokens)")
+            Divider()
+
+            Text("Reset Time Anchors")
+                .font(.subheadline.bold())
+            Text("Set the last known reset time. The app computes the next reset from that anchor on a fixed cycle (5h / 7d). Leave blank to use app-start as anchor.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Daily anchor (YYYY-MM-DD HH:mm)")
+                .font(.caption)
+            TextField("e.g. 2026-02-18 09:00", text: $viewModel.dailyAnchorInput)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+
+            Text("Weekly anchor (YYYY-MM-DD HH:mm)")
+                .font(.caption)
+            TextField("e.g. 2026-02-16 09:00", text: $viewModel.weeklyAnchorInput)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+
+            Divider()
+
+            Text("Token Budget (Estimated Mode)")
+                .font(.subheadline.bold())
+
+            Text("Daily Budget (tokens)")
                 .font(.caption)
             TextField("e.g. 44,000", text: $viewModel.dailyLimitInput)
                 .textFieldStyle(.roundedBorder)
 
-            Text("7d Budget (tokens)")
+            Text("Weekly Budget (tokens)")
                 .font(.caption)
             TextField("e.g. 1,478,400", text: $viewModel.weeklyLimitInput)
                 .textFieldStyle(.roundedBorder)
@@ -141,7 +167,7 @@ private struct LimitsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            if let error = viewModel.errorMessage, error.contains("Limit") {
+            if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
