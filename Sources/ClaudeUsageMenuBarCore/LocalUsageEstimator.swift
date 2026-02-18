@@ -43,7 +43,7 @@ public enum LocalUsageEstimatorError: LocalizedError {
 public struct LocalUsageEstimator: Sendable {
     public init() {}
 
-    public func estimate(now: Date = .now) throws -> LocalUsageEstimate {
+    public func estimate(now: Date = .now, weeklyWindowStart: Date? = nil) throws -> LocalUsageEstimate {
         let path = NSHomeDirectory() + "/.claude/stats-cache.json"
         guard FileManager.default.fileExists(atPath: path) else {
             throw LocalUsageEstimatorError.missingStatsCache
@@ -60,7 +60,7 @@ public struct LocalUsageEstimator: Sendable {
         // Primary source: per-message usage from Claude Code local logs.
         // This captures rolling windows and includes cache read/creation tokens that are often
         // material for "you've hit your limit" situations.
-        let scanned = scanProjectsJSONL(now: now)
+        let scanned = scanProjectsJSONL(now: now, weeklyWindowStart: weeklyWindowStart)
         var daily = scanned.daily
         var weekly = scanned.weekly
         var sourceDetails = scanned.sourceDetails
@@ -135,16 +135,16 @@ private struct ProjectScanRollup {
     let sourceDetails: String
 }
 
-private func scanProjectsJSONL(now: Date) -> ProjectScanRollup {
+private func scanProjectsJSONL(now: Date, weeklyWindowStart: Date? = nil) -> ProjectScanRollup {
     let projectsRoot = URL(fileURLWithPath: NSHomeDirectory() + "/.claude/projects", isDirectory: true)
     let fm = FileManager.default
 
     // Rolling windows:
     // - daily(5h): rolling last 5 hours
-    // - weekly: rolling last 7 days
+    // - weekly: anchor-based cycle start if provided, otherwise rolling last 7 days
     let windowEnd = now
     let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
-    let sevenDayStart = now.addingTimeInterval(-7 * 24 * 60 * 60)
+    let sevenDayStart = weeklyWindowStart ?? now.addingTimeInterval(-7 * 24 * 60 * 60)
 
     var dailyMaxByMessageID: [String: Double] = [:]
     var weeklyMaxByMessageID: [String: Double] = [:]

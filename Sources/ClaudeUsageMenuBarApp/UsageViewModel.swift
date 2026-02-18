@@ -154,13 +154,14 @@ final class UsageViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
+            let now = Date()
             // File scanning can be heavy; do it off the main thread.
-            let estimate = try await Task.detached(priority: .utility) { [estimator] in
-                try estimator.estimate()
+            let weeklyStart = currentWeeklyWindowStart(at: now)
+            let estimate = try await Task.detached(priority: .utility) { [estimator, weeklyStart] in
+                try estimator.estimate(weeklyWindowStart: weeklyStart)
             }.value
             let dailyLimit = settings.dailyTokenLimit
             let weeklyLimit = settings.weeklyTokenLimit
-            let now = Date()
 
             let daily = UsageWindow(
                 usedTokens: estimate.dailyTokens,
@@ -251,6 +252,19 @@ final class UsageViewModel: ObservableObject {
         let cyclesPassed = floor(elapsed / intervalSec)
         let lastReset = anchor.addingTimeInterval(cyclesPassed * intervalSec)
         return lastReset.addingTimeInterval(intervalSec)
+    }
+
+    /// Returns the start of the current weekly window (= last reset time).
+    /// When anchor is set: anchor + N*7d ≤ date (most recent cycle boundary).
+    /// When unset: now - 7d (pure rolling).
+    func currentWeeklyWindowStart(at date: Date) -> Date {
+        let intervalSec: TimeInterval = 7 * 24 * 60 * 60
+        guard let anchor = settings.weeklyAnchorDate else {
+            return date.addingTimeInterval(-intervalSec)
+        }
+        let elapsed = date.timeIntervalSince(anchor)
+        let cyclesPassed = floor(elapsed / intervalSec)
+        return anchor.addingTimeInterval(cyclesPassed * intervalSec)
     }
 
     /// Returns the next weekly reset time after `date`.
