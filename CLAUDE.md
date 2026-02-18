@@ -26,14 +26,14 @@ No external dependencies — only Swift standard library + Apple frameworks (Fou
 Two SPM targets:
 
 **`ClaudeUsageMenuBarCore`** (library) — pure logic, no UI:
-- [Models.swift](Sources/ClaudeUsageMenuBarCore/Models.swift) — `UsageWindow`, `UsageSnapshot`, `LocalUsageEstimate` data structures
-- [LocalUsageEstimator.swift](Sources/ClaudeUsageMenuBarCore/LocalUsageEstimator.swift) — scans `~/.claude/projects/**/*.jsonl`, applies weighted token counting, deduplicates by message ID
-- [SettingsStore.swift](Sources/ClaudeUsageMenuBarCore/SettingsStore.swift) — persists settings to `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
-- [BudgetSuggester.swift](Sources/ClaudeUsageMenuBarCore/BudgetSuggester.swift) — computes default budget suggestions
+- [Models.swift](Sources/ClaudeUsageMenuBarCore/Models.swift) — `UsageWindow`, `UsageSnapshot` (UI-facing); `AppSettings`, `PersistedSnapshot` in [SettingsStore.swift](Sources/ClaudeUsageMenuBarCore/SettingsStore.swift)
+- [LocalUsageEstimator.swift](Sources/ClaudeUsageMenuBarCore/LocalUsageEstimator.swift) — scans `~/.claude/projects/**/*.jsonl`, applies weighted token counting, deduplicates by message ID; also defines `LocalUsageEstimate` and `LocalUsageEstimatorError`
+- [SettingsStore.swift](Sources/ClaudeUsageMenuBarCore/SettingsStore.swift) — persists `AppSettings` (limits, anchor dates, cached snapshot) to `~/Library/Application Support/ClaudeUsageMenuBar/settings.json`
+- [BudgetSuggester.swift](Sources/ClaudeUsageMenuBarCore/BudgetSuggester.swift) — provides static defaults: daily=44,000, weekly=daily×33.6
 
 **`ClaudeUsageMenuBarApp`** (executable):
-- [AppMain.swift](Sources/ClaudeUsageMenuBarApp/AppMain.swift) — `@main` SwiftUI entry, `MenuBarExtra` integration
-- [UsageViewModel.swift](Sources/ClaudeUsageMenuBarApp/UsageViewModel.swift) — `@MainActor` ViewModel, 5-min auto-refresh timer, burn rate calculation
+- [AppMain.swift](Sources/ClaudeUsageMenuBarApp/AppMain.swift) — `@main` SwiftUI entry, `MenuBarExtra` integration; `LSUIElement=true` so it never shows in the Dock
+- [UsageViewModel.swift](Sources/ClaudeUsageMenuBarApp/UsageViewModel.swift) — `@MainActor` ViewModel; 5-min auto-refresh timer; burn rate via lifetime token delta; `nextDailyReset`/`nextWeeklyReset` anchor-date arithmetic
 - [MenuBarContentView.swift](Sources/ClaudeUsageMenuBarApp/MenuBarContentView.swift) — popover UI, progress bars, settings sheet
 
 ## Key Design Decisions
@@ -55,11 +55,14 @@ The estimator applies **different weights per window** to prevent distortion:
 5. Fallback to `~/.claude/stats-cache.json` if JSONL yields no data
 6. Cache snapshot to settings for fast next-startup display
 
+### Anchor Dates
+Both windows support an optional user-configurable anchor date (stored in `AppSettings`). When set, reset times are computed as `anchor + N × interval` (next cycle boundary). When unset:
+- Daily: rolling from now (reset = now + 5h)
+- Weekly: next Sunday 15:00 Asia/Seoul
+
+Anchor dates are input as `YYYY-MM-DD HH:mm` in the settings sheet and parsed in local timezone.
+
 ### Performance Limits
 - Skips files older than 30 days
-- Scans at most 200 files per refresh
+- Scans at most 200 files per refresh (most-recent first)
 - Deep JSON search limited to 4000 objects (safety for nested structures)
-
-### Reset Times
-- Daily: synthetic 5-hour rolling window from now
-- Weekly: next Sunday 15:00 Asia/Seoul timezone
