@@ -13,18 +13,39 @@ public struct AppSettings: Codable, Sendable {
     /// nil = use app-start time as anchor.
     public var weeklyAnchorDate: Date?
 
+    /// Token weight applied to cache_creation_input_tokens for the 5h daily window.
+    /// nil = use built-in default (0.02).
+    public var dailyCacheCreationWeight: Double?
+    /// Token weight applied to cache_read_input_tokens for the 5h daily window.
+    /// nil = use built-in default (0.00133).
+    public var dailyCacheReadWeight: Double?
+    /// Token weight applied to cache_creation_input_tokens for the 7d weekly window.
+    /// nil = use built-in default (0.02).
+    public var weeklyCacheCreationWeight: Double?
+    /// Token weight applied to cache_read_input_tokens for the 7d weekly window.
+    /// nil = use built-in default (0.0165).
+    public var weeklyCacheReadWeight: Double?
+
     public init(
         dailyTokenLimit: Int? = nil,
         weeklyTokenLimit: Int? = nil,
         lastSnapshot: PersistedSnapshot? = nil,
         dailyAnchorDate: Date? = nil,
-        weeklyAnchorDate: Date? = nil
+        weeklyAnchorDate: Date? = nil,
+        dailyCacheCreationWeight: Double? = nil,
+        dailyCacheReadWeight: Double? = nil,
+        weeklyCacheCreationWeight: Double? = nil,
+        weeklyCacheReadWeight: Double? = nil
     ) {
         self.dailyTokenLimit = dailyTokenLimit
         self.weeklyTokenLimit = weeklyTokenLimit
         self.lastSnapshot = lastSnapshot
         self.dailyAnchorDate = dailyAnchorDate
         self.weeklyAnchorDate = weeklyAnchorDate
+        self.dailyCacheCreationWeight = dailyCacheCreationWeight
+        self.dailyCacheReadWeight = dailyCacheReadWeight
+        self.weeklyCacheCreationWeight = weeklyCacheCreationWeight
+        self.weeklyCacheReadWeight = weeklyCacheReadWeight
     }
 }
 

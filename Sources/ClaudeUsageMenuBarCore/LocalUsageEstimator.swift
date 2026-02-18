@@ -43,7 +43,15 @@ public enum LocalUsageEstimatorError: LocalizedError {
 public struct LocalUsageEstimator: Sendable {
     public init() {}
 
-    public func estimate(now: Date = .now, weeklyWindowStart: Date? = nil) throws -> LocalUsageEstimate {
+    public func estimate(
+        now: Date = .now,
+        dailyWindowStart: Date? = nil,
+        weeklyWindowStart: Date? = nil,
+        dailyCacheCreationWeight: Double? = nil,
+        dailyCacheReadWeight: Double? = nil,
+        weeklyCacheCreationWeight: Double? = nil,
+        weeklyCacheReadWeight: Double? = nil
+    ) throws -> LocalUsageEstimate {
         let path = NSHomeDirectory() + "/.claude/stats-cache.json"
         guard FileManager.default.fileExists(atPath: path) else {
             throw LocalUsageEstimatorError.missingStatsCache
@@ -60,7 +68,21 @@ public struct LocalUsageEstimator: Sendable {
         // Primary source: per-message usage from Claude Code local logs.
         // This captures rolling windows and includes cache read/creation tokens that are often
         // material for "you've hit your limit" situations.
-        let scanned = scanProjectsJSONL(now: now, weeklyWindowStart: weeklyWindowStart)
+        let resolvedDailyWeights = TokenWeights(
+            cacheCreationWeight: dailyCacheCreationWeight ?? defaultDailyWeights.cacheCreationWeight,
+            cacheReadWeight: dailyCacheReadWeight ?? defaultDailyWeights.cacheReadWeight
+        )
+        let resolvedWeeklyWeights = TokenWeights(
+            cacheCreationWeight: weeklyCacheCreationWeight ?? defaultWeeklyWeights.cacheCreationWeight,
+            cacheReadWeight: weeklyCacheReadWeight ?? defaultWeeklyWeights.cacheReadWeight
+        )
+        let scanned = scanProjectsJSONL(
+            now: now,
+            dailyWindowStart: dailyWindowStart,
+            weeklyWindowStart: weeklyWindowStart,
+            dailyWeights: resolvedDailyWeights,
+            weeklyWeights: resolvedWeeklyWeights
+        )
         var daily = scanned.daily
         var weekly = scanned.weekly
         var sourceDetails = scanned.sourceDetails
@@ -135,15 +157,21 @@ private struct ProjectScanRollup {
     let sourceDetails: String
 }
 
-private func scanProjectsJSONL(now: Date, weeklyWindowStart: Date? = nil) -> ProjectScanRollup {
+private func scanProjectsJSONL(
+    now: Date,
+    dailyWindowStart: Date? = nil,
+    weeklyWindowStart: Date? = nil,
+    dailyWeights: TokenWeights,
+    weeklyWeights: TokenWeights
+) -> ProjectScanRollup {
     let projectsRoot = URL(fileURLWithPath: NSHomeDirectory() + "/.claude/projects", isDirectory: true)
     let fm = FileManager.default
 
     // Rolling windows:
-    // - daily(5h): rolling last 5 hours
+    // - daily(5h): anchor-based cycle start if provided, otherwise rolling last 5 hours
     // - weekly: anchor-based cycle start if provided, otherwise rolling last 7 days
     let windowEnd = now
-    let fiveHourStart = now.addingTimeInterval(-5 * 60 * 60)
+    let fiveHourStart = dailyWindowStart ?? now.addingTimeInterval(-5 * 60 * 60)
     let sevenDayStart = weeklyWindowStart ?? now.addingTimeInterval(-7 * 24 * 60 * 60)
 
     var dailyMaxByMessageID: [String: Double] = [:]
@@ -191,7 +219,9 @@ private func scanProjectsJSONL(now: Date, weeklyWindowStart: Date? = nil) -> Pro
             url: entry.url,
             window5hStart: fiveHourStart,
             window7dStart: sevenDayStart,
-            windowEnd: windowEnd
+            windowEnd: windowEnd,
+            dailyWeights: dailyWeights,
+            weeklyWeights: weeklyWeights
         )
         scannedLines += lineCount
         usedFallback = usedFallback || didUse
@@ -222,7 +252,9 @@ private func scanOneJSONL(
     url: URL,
     window5hStart: Date,
     window7dStart: Date,
-    windowEnd: Date
+    windowEnd: Date,
+    dailyWeights: TokenWeights,
+    weeklyWeights: TokenWeights
 ) -> (daily: [String: Double], weekly: [String: Double], lineCount: Int, didUse: Bool) {
     guard let data = try? Data(contentsOf: url),
           let text = String(data: data, encoding: .utf8) else {
@@ -343,16 +375,16 @@ private func usageRecord(from usage: [String: Any], id: String) -> MessageUsageR
     )
 }
 
-private struct TokenWeights {
-    let cacheCreationWeight: Double
-    let cacheReadWeight: Double
+public struct TokenWeights: Sendable {
+    public let cacheCreationWeight: Double
+    public let cacheReadWeight: Double
 }
 
 // Calibrated defaults from observed local logs:
 // - 5h window is most sensitive to cache-read burstiness, so use a more conservative weight.
 // - 7d window includes longer-lived context reuse, so weight is higher.
-private let dailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.00133)
-private let weeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0165)
+public let defaultDailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.00133)
+public let defaultWeeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0165)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }

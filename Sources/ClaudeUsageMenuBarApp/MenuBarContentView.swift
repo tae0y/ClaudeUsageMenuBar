@@ -167,6 +167,36 @@ private struct LimitsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
+            Divider()
+
+            Text("Cache Token Weights")
+                .font(.subheadline.bold())
+            Text("Scale how much cache_creation and cache_read tokens count toward each window. Leave blank to use built-in defaults.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            cacheWeightRow(
+                label: "5h cache_creation weight",
+                placeholder: "default: 0.02",
+                input: $viewModel.dailyCacheCreationWeightInput
+            )
+            cacheWeightRow(
+                label: "5h cache_read weight",
+                placeholder: "default: 0.00133",
+                input: $viewModel.dailyCacheReadWeightInput
+            )
+            cacheWeightRow(
+                label: "7d cache_creation weight",
+                placeholder: "default: 0.02",
+                input: $viewModel.weeklyCacheCreationWeightInput
+            )
+            cacheWeightRow(
+                label: "7d cache_read weight",
+                placeholder: "default: 0.0165",
+                input: $viewModel.weeklyCacheReadWeightInput
+            )
+
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
@@ -180,5 +210,17 @@ private struct LimitsView: View {
         }
         .padding(16)
         .frame(width: 380)
+    }
+
+    @ViewBuilder
+    private func cacheWeightRow(label: String, placeholder: String, input: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .frame(width: 180, alignment: .leading)
+            TextField(placeholder, text: input)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+        }
     }
 }

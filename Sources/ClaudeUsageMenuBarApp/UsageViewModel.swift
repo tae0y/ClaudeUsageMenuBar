@@ -16,6 +16,12 @@ final class UsageViewModel: ObservableObject {
     /// "YYYY-MM-DD HH:mm" string the user types for the weekly anchor
     @Published var weeklyAnchorInput = ""
 
+    // Cache weight inputs (displayed as plain decimals, e.g. "0.02")
+    @Published var dailyCacheCreationWeightInput = ""
+    @Published var dailyCacheReadWeightInput = ""
+    @Published var weeklyCacheCreationWeightInput = ""
+    @Published var weeklyCacheReadWeightInput = ""
+
     private let estimator = LocalUsageEstimator()
     private var timer: Timer?
     private let settingsStore = SettingsStore()
@@ -52,6 +58,11 @@ final class UsageViewModel: ObservableObject {
         if let w = settings.weeklyTokenLimit { weeklyLimitInput = String(w) }
         dailyAnchorInput = settings.dailyAnchorDate.map { anchorInputFormatter.string(from: $0) } ?? ""
         weeklyAnchorInput = settings.weeklyAnchorDate.map { anchorInputFormatter.string(from: $0) } ?? ""
+
+        dailyCacheCreationWeightInput = settings.dailyCacheCreationWeight.map { weightString($0) } ?? ""
+        dailyCacheReadWeightInput = settings.dailyCacheReadWeight.map { weightString($0) } ?? ""
+        weeklyCacheCreationWeightInput = settings.weeklyCacheCreationWeight.map { weightString($0) } ?? ""
+        weeklyCacheReadWeightInput = settings.weeklyCacheReadWeight.map { weightString($0) } ?? ""
 
         // Show cached snapshot immediately to avoid "blank" first paint.
         if let cached = settings.lastSnapshot {
@@ -132,10 +143,37 @@ final class UsageViewModel: ObservableObject {
             weeklyAnchor = d
         }
 
+        // Parse cache weights — empty = use built-in default (nil stored).
+        let dailyCacheCreate = parseCacheWeight(dailyCacheCreationWeightInput)
+        let dailyCacheRead = parseCacheWeight(dailyCacheReadWeightInput)
+        let weeklyCacheCreate = parseCacheWeight(weeklyCacheCreationWeightInput)
+        let weeklyCacheRead = parseCacheWeight(weeklyCacheReadWeightInput)
+
+        if dailyCacheCreationWeightInput.trimmingCharacters(in: .whitespacesAndNewlines) != "" && dailyCacheCreate == nil {
+            errorMessage = "Invalid daily cache creation weight. Use a decimal like 0.02. Leave blank for default."
+            return
+        }
+        if dailyCacheReadWeightInput.trimmingCharacters(in: .whitespacesAndNewlines) != "" && dailyCacheRead == nil {
+            errorMessage = "Invalid daily cache read weight. Use a decimal like 0.00133. Leave blank for default."
+            return
+        }
+        if weeklyCacheCreationWeightInput.trimmingCharacters(in: .whitespacesAndNewlines) != "" && weeklyCacheCreate == nil {
+            errorMessage = "Invalid weekly cache creation weight. Use a decimal like 0.02. Leave blank for default."
+            return
+        }
+        if weeklyCacheReadWeightInput.trimmingCharacters(in: .whitespacesAndNewlines) != "" && weeklyCacheRead == nil {
+            errorMessage = "Invalid weekly cache read weight. Use a decimal like 0.0165. Leave blank for default."
+            return
+        }
+
         settings.dailyTokenLimit = (daily != nil && daily! > 0) ? daily : nil
         settings.weeklyTokenLimit = (weekly != nil && weekly! > 0) ? weekly : nil
         settings.dailyAnchorDate = dailyAnchor
         settings.weeklyAnchorDate = weeklyAnchor
+        settings.dailyCacheCreationWeight = dailyCacheCreate
+        settings.dailyCacheReadWeight = dailyCacheRead
+        settings.weeklyCacheCreationWeight = weeklyCacheCreate
+        settings.weeklyCacheReadWeight = weeklyCacheRead
 
         do {
             try settingsStore.save(settings)
@@ -156,9 +194,21 @@ final class UsageViewModel: ObservableObject {
         do {
             let now = Date()
             // File scanning can be heavy; do it off the main thread.
+            let dailyStart = currentDailyWindowStart(at: now)
             let weeklyStart = currentWeeklyWindowStart(at: now)
-            let estimate = try await Task.detached(priority: .utility) { [estimator, weeklyStart] in
-                try estimator.estimate(weeklyWindowStart: weeklyStart)
+            let dailyCCW = settings.dailyCacheCreationWeight
+            let dailyCRW = settings.dailyCacheReadWeight
+            let weeklyCCW = settings.weeklyCacheCreationWeight
+            let weeklyCRW = settings.weeklyCacheReadWeight
+            let estimate = try await Task.detached(priority: .utility) { [estimator, dailyStart, weeklyStart] in
+                try estimator.estimate(
+                    dailyWindowStart: dailyStart,
+                    weeklyWindowStart: weeklyStart,
+                    dailyCacheCreationWeight: dailyCCW,
+                    dailyCacheReadWeight: dailyCRW,
+                    weeklyCacheCreationWeight: weeklyCCW,
+                    weeklyCacheReadWeight: weeklyCRW
+                )
             }.value
             let dailyLimit = settings.dailyTokenLimit
             let weeklyLimit = settings.weeklyTokenLimit
@@ -254,6 +304,19 @@ final class UsageViewModel: ObservableObject {
         return lastReset.addingTimeInterval(intervalSec)
     }
 
+    /// Returns the start of the current daily window (= last reset time).
+    /// When anchor is set: anchor + N*5h ≤ date (most recent cycle boundary).
+    /// When unset: now - 5h (pure rolling).
+    func currentDailyWindowStart(at date: Date) -> Date {
+        let intervalSec: TimeInterval = 5 * 60 * 60
+        guard let anchor = settings.dailyAnchorDate else {
+            return date.addingTimeInterval(-intervalSec)
+        }
+        let elapsed = date.timeIntervalSince(anchor)
+        let cyclesPassed = floor(elapsed / intervalSec)
+        return anchor.addingTimeInterval(cyclesPassed * intervalSec)
+    }
+
     /// Returns the start of the current weekly window (= last reset time).
     /// When anchor is set: anchor + N*7d ≤ date (most recent cycle boundary).
     /// When unset: now - 7d (pure rolling).
@@ -315,6 +378,20 @@ final class UsageViewModel: ObservableObject {
         }
         return String(value)
     }
+}
+
+// MARK: - Helpers
+
+private func parseCacheWeight(_ raw: String) -> Double? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, let v = Double(trimmed), v >= 0 else { return nil }
+    return v
+}
+
+private func weightString(_ value: Double) -> String {
+    // Show up to 5 significant decimal places, trim trailing zeros.
+    let s = String(format: "%.5f", value)
+    return s.replacingOccurrences(of: #"\.?0+$"#, with: "", options: .regularExpression)
 }
 
 // MARK: - Shared formatter
