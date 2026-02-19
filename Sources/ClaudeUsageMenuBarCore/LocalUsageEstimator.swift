@@ -382,10 +382,10 @@ public struct TokenWeights: Sendable {
 
 // Calibrated defaults (2026-02-20) — fitted against observed Anthropic dashboard
 // percentages with a Max 5× subscription (budget=220K daily, 7.39M weekly).
-// cache_read dominates raw volume (24M+ in 5h) so its weight must be very low.
-// Fitted to multiple data points: daily ~49%, weekly ~10%.
-public let defaultDailyWeights = TokenWeights(cacheCreationWeight: 0.03, cacheReadWeight: 0.003)
-public let defaultWeeklyWeights = TokenWeights(cacheCreationWeight: 0.03, cacheReadWeight: 0.006)
+// cache_read dominates raw volume (24M–48M+ in 5h) so its weight must be very low.
+// Fitted to data point: daily window at 61% real → cr ≈ 0.0015 with cc=0.025.
+public let defaultDailyWeights = TokenWeights(cacheCreationWeight: 0.025, cacheReadWeight: 0.0015)
+public let defaultWeeklyWeights = TokenWeights(cacheCreationWeight: 0.025, cacheReadWeight: 0.003)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }
