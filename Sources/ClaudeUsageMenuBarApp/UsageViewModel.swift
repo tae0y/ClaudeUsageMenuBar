@@ -36,12 +36,13 @@ final class UsageViewModel: ObservableObject {
     init() {
         self.settings = settingsStore.load()
 
-        // One-time migration for old defaults:
-        // legacy weekly defaults were 308,000 (daily*7) and 2,000,000 (placeholder-era value).
-        // new: weekly is derived from 5h windows across 7d => daily*33.6 (1,478,400 when daily is 44,000)
+        // One-time migration: upgrade legacy 1× budgets (44,000 daily) to 5× defaults (220,000).
+        // Also covers older weekly placeholders (308,000, 2,000,000, 1,478,400).
+        let legacyWeeklyValues: Set<Int> = [308_000, 2_000_000, 1_478_400]
         if settings.dailyTokenLimit == 44_000,
-           settings.weeklyTokenLimit == 308_000 || settings.weeklyTokenLimit == 2_000_000 {
+           let wl = settings.weeklyTokenLimit, legacyWeeklyValues.contains(wl) {
             let suggested = budgetSuggester.suggest()
+            settings.dailyTokenLimit = suggested.dailyTokenBudget
             settings.weeklyTokenLimit = suggested.weeklyTokenBudget
             try? settingsStore.save(settings)
         }
@@ -73,6 +74,9 @@ final class UsageViewModel: ObservableObject {
             self.snapshot = UsageSnapshot(daily: daily, weekly: weekly, fetchedAt: cached.fetchedAt)
             self.sourceStatus = "Estimated (cached): \(cached.sourceDescription)"
         }
+
+        // Eagerly refresh so the menu bar label shows fresh data without waiting for popover open.
+        Task { await refresh() }
     }
 
     var dailyWindowLabel: String { "5h (rolling)" }

@@ -380,11 +380,12 @@ public struct TokenWeights: Sendable {
     public let cacheReadWeight: Double
 }
 
-// Calibrated defaults from observed local logs:
-// - 5h window is most sensitive to cache-read burstiness, so use a more conservative weight.
-// - 7d window includes longer-lived context reuse, so weight is higher.
-public let defaultDailyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.00133)
-public let defaultWeeklyWeights = TokenWeights(cacheCreationWeight: 0.02, cacheReadWeight: 0.0165)
+// Calibrated defaults (2026-02-20) — fitted against observed Anthropic dashboard
+// percentages with a Max 5× subscription (budget=220K daily, 7.39M weekly).
+// cache_read dominates raw volume (24M+ in 5h) so its weight must be very low.
+// Fitted to multiple data points: daily ~49%, weekly ~10%.
+public let defaultDailyWeights = TokenWeights(cacheCreationWeight: 0.03, cacheReadWeight: 0.003)
+public let defaultWeeklyWeights = TokenWeights(cacheCreationWeight: 0.03, cacheReadWeight: 0.006)
 
 private func intFrom(_ dict: [String: Any], key: String) -> Int? {
     if let v = dict[key] as? Int { return v }
